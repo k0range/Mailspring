@@ -129,11 +129,17 @@ export default class TokenizingContenteditable extends Component<TokenizingConte
   onCompositionStart = () => {
     // CJK Input Fix: Mark composition as started
     this._isComposing = true;
+    if (AppEnv.inDevMode()) {
+      console.log('[CJK-Fix] TokenizingContenteditable compositionstart');
+    }
   };
 
   onCompositionEnd = (e: React.CompositionEvent) => {
     // CJK Input Fix: Mark composition as ended and update tokens
     this._isComposing = false;
+    if (AppEnv.inDevMode()) {
+      console.log('[CJK-Fix] TokenizingContenteditable compositionend', e.data);
+    }
     const value = (e.target as HTMLElement).innerText.replace(/\s/g, ' ');
     this._tokensEl.innerHTML = this.valueToHTML(value);
     this.props.onChange(value);

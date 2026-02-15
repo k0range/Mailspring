@@ -40,11 +40,17 @@ document.addEventListener('textInput', e => (lastTextInputEvent = e), true);
 document.addEventListener('compositionstart', e => {
   lastTextInputEvent = null;
   isComposing = true; // CJK Input Fix: Mark composition as started
+  if (AppEnv.inDevMode()) {
+    console.log('[CJK-Fix] compositionstart', e);
+  }
 }, true);
 document.addEventListener(
   'compositionend',
   (e: CompositionEvent) => {
     isComposing = false; // CJK Input Fix: Mark composition as ended
+    if (AppEnv.inDevMode()) {
+      console.log('[CJK-Fix] compositionend', e.data);
+    }
     if (e.target instanceof HTMLElement && e.target.closest('[data-slate-editor]')) {
       if (!lastTextInputEvent) {
         console.warn('Manually emitting textInput event for Chrome');

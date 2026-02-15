@@ -241,6 +241,9 @@ export class ComposerEditor extends React.Component<ComposerEditorProps, Compose
     // to prevent state updates that could interfere with the composition.
     // The composition will be committed via compositionend event.
     if (getIsComposing()) {
+      if (AppEnv.inDevMode()) {
+        console.log('[CJK-Fix] Suppressing onChange during composition');
+      }
       return;
     }
     

@@ -12,8 +12,17 @@ interface TokenizingContenteditableProps {
 export default class TokenizingContenteditable extends Component<TokenizingContenteditableProps> {
   _textEl: HTMLDivElement;
   _tokensEl: HTMLDivElement;
+  // Track IME composition state to prevent DOM updates during CJK input
+  _isComposing = false;
 
   shouldComponentUpdate(nextProps) {
+    // Prevent DOM updates during IME composition to avoid breaking CJK input
+    // When composing is true, the IME needs full control over the contentEditable element
+    if (this._isComposing) {
+      console.log('[IME] Skipping DOM update during composition');
+      return false;
+    }
+
     if (nextProps.value !== this._textEl.innerText.replace(/\s/g, ' ')) {
       this._textEl.innerHTML = nextProps.value.replace(/\s/g, '&nbsp;');
       this._tokensEl.innerHTML = this.valueToHTML(nextProps.value);
@@ -114,9 +123,43 @@ export default class TokenizingContenteditable extends Component<TokenizingConte
   };
 
   onChange = e => {
+    // Skip processing during IME composition to avoid interrupting CJK input
+    // The browser's composition events will handle the text during composition
+    if (this._isComposing) {
+      console.log('[IME] Skipping onChange during composition');
+      return;
+    }
+
     const value = e.target.innerText.replace(/\s/g, ' ');
     this._tokensEl.innerHTML = this.valueToHTML(value);
     this.props.onChange(value);
+  };
+
+  // Handle IME composition start - set flag to prevent DOM updates
+  onCompositionStart = (e: React.CompositionEvent<HTMLDivElement>) => {
+    console.log('[IME] compositionstart:', e.data);
+    this._isComposing = true;
+  };
+
+  // Handle IME composition update - track intermediate composition state
+  onCompositionUpdate = (e: React.CompositionEvent<HTMLDivElement>) => {
+    console.log('[IME] compositionupdate:', e.data);
+  };
+
+  // Handle IME composition end - allow DOM updates and commit final value
+  onCompositionEnd = (e: React.CompositionEvent<HTMLDivElement>) => {
+    console.log('[IME] compositionend:', e.data);
+    this._isComposing = false;
+
+    // After composition ends, process the final composed text
+    // Use setTimeout to ensure the composition is fully committed before processing
+    setTimeout(() => {
+      if (this._textEl) {
+        const value = this._textEl.innerText.replace(/\s/g, ' ');
+        this._tokensEl.innerHTML = this.valueToHTML(value);
+        this.props.onChange(value);
+      }
+    }, 0);
   };
 
   render() {
@@ -133,6 +176,9 @@ export default class TokenizingContenteditable extends Component<TokenizingConte
           onFocus={this.props.onFocus}
           onBlur={this.props.onBlur}
           onInput={this.onChange}
+          onCompositionStart={this.onCompositionStart}
+          onCompositionUpdate={this.onCompositionUpdate}
+          onCompositionEnd={this.onCompositionEnd}
         />
         <div
           className="layer layer-tokens"

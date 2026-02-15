@@ -39,6 +39,7 @@ export class ComposerEditor extends React.Component<ComposerEditorProps, Compose
 
   _pluginKeyHandlers = {};
   _mounted = false;
+  _isComposing = false; // Track IME composition state to prevent DOM updates during CJK input
   editor: Editor | null = null;
   state: ComposerEditorState = { isTyping: false };
 
@@ -143,14 +144,21 @@ export class ComposerEditor extends React.Component<ComposerEditorProps, Compose
     // processing, resulting in "swallowed" keystrokes (especially Enter and Backspace).
     // By deferring to the next frame, we ensure the key event is fully processed
     // before React re-renders and changes the spellCheck attribute.
-    if (!this.state.isTyping) {
+    //
+    // ALSO IMPORTANT: During IME composition (CJK input), we must not change the
+    // spellCheck attribute at all, as this can interrupt the composition and cause
+    // text to disappear or jump back. The _isComposing flag prevents this.
+    if (!this.state.isTyping && !this._isComposing) {
       requestAnimationFrame(() => {
-        if (this._mounted && !this.state.isTyping) {
+        if (this._mounted && !this.state.isTyping && !this._isComposing) {
           this.setState({ isTyping: true });
         }
       });
     }
-    this._onDoneTyping();
+    // Don't call _onDoneTyping during composition - wait until composition ends
+    if (!this._isComposing) {
+      this._onDoneTyping();
+    }
     return next();
   };
 
@@ -238,6 +246,35 @@ export class ComposerEditor extends React.Component<ComposerEditorProps, Compose
     this.props.onChange(change);
   };
 
+  // Handle IME composition start - prevent state changes that modify contentEditable attributes
+  onCompositionStart = (event, editor: Editor, next: () => void) => {
+    console.log('[IME] compositionstart in composer-editor');
+    this._isComposing = true;
+    return next();
+  };
+
+  // Handle IME composition update - track intermediate composition state
+  onCompositionUpdate = (event, editor: Editor, next: () => void) => {
+    console.log('[IME] compositionupdate in composer-editor');
+    return next();
+  };
+
+  // Handle IME composition end - allow state changes and re-enable spellcheck timer
+  onCompositionEnd = (event, editor: Editor, next: () => void) => {
+    console.log('[IME] compositionend in composer-editor');
+    this._isComposing = false;
+
+    // After composition ends, start the spellcheck timer
+    // Use setTimeout to ensure composition is fully committed before processing
+    setTimeout(() => {
+      if (this._mounted) {
+        this._onDoneTyping();
+      }
+    }, 0);
+
+    return next();
+  };
+
   // Event Handlers
   render() {
     const { className, onBlur, onDrop, value, propsForPlugins } = this.props;
@@ -274,6 +311,9 @@ export class ComposerEditor extends React.Component<ComposerEditorProps, Compose
             onCut={this.onCut as any}
             onCopy={this.onCopy as any}
             onPaste={this.onPaste as any}
+            onCompositionStart={this.onCompositionStart as any}
+            onCompositionUpdate={this.onCompositionUpdate as any}
+            onCompositionEnd={this.onCompositionEnd as any}
             spellCheck={!this.state.isTyping && AppEnv.config.get('core.composing.spellcheck')}
             plugins={(plugins as any) as Plugin[]}
             propsForPlugins={propsForPlugins}
@@ -327,13 +367,11 @@ export function handleFilePasted(event: ClipboardEvent, onFileReceived: (path: s
     new RegExp(String.fromCharCode(0), 'g'),
     ''
   );
-  const xdgCopiedFiles = (
-    (ElectronClipboard.read('text/uri-list') || '')
-      .split('\r\n') // yes, really
-      .filter(path => path.startsWith('file://'))
-      .map(path => path.replace('file://', ''))
-      .filter(path => path.length)
-  )
+  const xdgCopiedFiles = (ElectronClipboard.read('text/uri-list') || '')
+    .split('\r\n') // yes, really
+    .filter(path => path.startsWith('file://'))
+    .map(path => path.replace('file://', ''))
+    .filter(path => path.length);
   if (macCopiedFile.length || winCopiedFile.length) {
     onFileReceived(macCopiedFile || winCopiedFile);
     return true;

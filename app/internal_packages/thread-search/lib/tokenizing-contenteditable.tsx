@@ -12,8 +12,15 @@ interface TokenizingContenteditableProps {
 export default class TokenizingContenteditable extends Component<TokenizingContenteditableProps> {
   _textEl: HTMLDivElement;
   _tokensEl: HTMLDivElement;
+  _isComposing = false; // CJK Input Fix: Track IME composition state
 
   shouldComponentUpdate(nextProps) {
+    // CJK Input Fix: Don't update innerHTML during IME composition
+    // to avoid breaking the composition flow
+    if (this._isComposing) {
+      return false;
+    }
+    
     if (nextProps.value !== this._textEl.innerText.replace(/\s/g, ' ')) {
       this._textEl.innerHTML = nextProps.value.replace(/\s/g, '&nbsp;');
       this._tokensEl.innerHTML = this.valueToHTML(nextProps.value);
@@ -119,6 +126,25 @@ export default class TokenizingContenteditable extends Component<TokenizingConte
     this.props.onChange(value);
   };
 
+  onCompositionStart = () => {
+    // CJK Input Fix: Mark composition as started
+    this._isComposing = true;
+    if (AppEnv.inDevMode()) {
+      console.log('[CJK-Fix] TokenizingContenteditable compositionstart');
+    }
+  };
+
+  onCompositionEnd = (e: React.CompositionEvent) => {
+    // CJK Input Fix: Mark composition as ended and update tokens
+    this._isComposing = false;
+    if (AppEnv.inDevMode()) {
+      console.log('[CJK-Fix] TokenizingContenteditable compositionend', e.data);
+    }
+    const value = (e.target as HTMLElement).innerText.replace(/\s/g, ' ');
+    this._tokensEl.innerHTML = this.valueToHTML(value);
+    this.props.onChange(value);
+  };
+
   render() {
     return (
       <div className="tokenizing-contenteditable">
@@ -133,6 +159,8 @@ export default class TokenizingContenteditable extends Component<TokenizingConte
           onFocus={this.props.onFocus}
           onBlur={this.props.onBlur}
           onInput={this.onChange}
+          onCompositionStart={this.onCompositionStart}
+          onCompositionEnd={this.onCompositionEnd}
         />
         <div
           className="layer layer-tokens"

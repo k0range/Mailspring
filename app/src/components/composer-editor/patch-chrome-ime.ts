@@ -13,6 +13,15 @@ and we have many custom plugins that need to be re-built and re-tested.
 delete HTMLElement.prototype.onbeforeinput;
 
 /*
+CJK Input Fix: Track global composition state to prevent editor updates during IME composition.
+This helps avoid interrupting the composition flow for Japanese, Chinese, and Korean input.
+*/
+let isComposing = false;
+export function getIsComposing() {
+  return isComposing;
+}
+
+/*
 This block fixes a bug in Chrome where blurring / moving selection away from the composition
 dropdown "commits" the composition but does NOT fire a textInput event to tell Slate.
 
@@ -28,10 +37,20 @@ dispatch a TextEvent into the editor manually.
 
 let lastTextInputEvent = null;
 document.addEventListener('textInput', e => (lastTextInputEvent = e), true);
-document.addEventListener('compositionstart', e => (lastTextInputEvent = null), true);
+document.addEventListener('compositionstart', e => {
+  lastTextInputEvent = null;
+  isComposing = true; // CJK Input Fix: Mark composition as started
+  if (AppEnv.inDevMode()) {
+    console.log('[CJK-Fix] compositionstart', e);
+  }
+}, true);
 document.addEventListener(
   'compositionend',
   (e: CompositionEvent) => {
+    isComposing = false; // CJK Input Fix: Mark composition as ended
+    if (AppEnv.inDevMode()) {
+      console.log('[CJK-Fix] compositionend', e.data);
+    }
     if (e.target instanceof HTMLElement && e.target.closest('[data-slate-editor]')) {
       if (!lastTextInputEvent) {
         console.warn('Manually emitting textInput event for Chrome');

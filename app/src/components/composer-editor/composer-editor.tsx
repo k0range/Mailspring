@@ -14,6 +14,7 @@ import ComposerEditorToolbar from './composer-editor-toolbar';
 import { schema, plugins, convertFromHTML, convertToHTML, convertToPlainText } from './conversion';
 import { lastUnquotedNode, removeQuotedText } from './base-block-plugins';
 import { changes as InlineAttachmentChanges } from './inline-attachment-plugins';
+import { getIsComposing } from './patch-chrome-ime';
 
 const AEditor = (SlateEditorComponent as any) as React.ComponentType<
   EditorProps & { ref: any; propsForPlugins: any }
@@ -235,6 +236,17 @@ export class ComposerEditor extends React.Component<ComposerEditorProps, Compose
     // This needs to be here because some composer plugins defer their calls to onChange
     // (like spellcheck and the context menu).
     if (!this._mounted) return;
+    
+    // CJK Input Fix: During IME composition, we should not trigger onChange
+    // to prevent state updates that could interfere with the composition.
+    // The composition will be committed via compositionend event.
+    if (getIsComposing()) {
+      if (AppEnv.inDevMode()) {
+        console.log('[CJK-Fix] Suppressing onChange during composition');
+      }
+      return;
+    }
+    
     this.props.onChange(change);
   };
 
